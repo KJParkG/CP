@@ -8,27 +8,30 @@
 Servo myservo;
 
 float duration, distance;
+float backdistance;
 
 #define trigPin 15
 #define echoPin 16
+#define backTrigPin 6
+#define backEchoPin 7
 
-int ena = 8;
-int in1 = 9;  //IN1
-int in2 = 10; //IN2
+int ena = 3;
+int in1 = 4;  //IN1
+int in2 = 5; //IN2
 
-int in3 = 11; //IN3
-int in4 = 12; //IN4
-int enb = 13;
+int in3 = 12; //IN3
+int in4 = 13; //IN4
+int enb = 18;
 
-float getDistance(){
+float measureDistance(int trig, int echo){
   //초음파센서 거리 측정 함수
-  digitalWrite(trigPin, LOW);
+  digitalWrite(trig, LOW);
   delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH);
+  digitalWrite(trig, HIGH);
   delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-  duration = pulseIn(echoPin, HIGH, 30000);
-  distance = ((float)(340*duration) / 10000) / 2;
+  digitalWrite(trig, LOW);
+  duration = pulseIn(echo, HIGH, 30000);
+  distance = ((float)(340*duration) / 10000) / 2; // 거리 = (음속 340 m/s * 시간(us)) / 2 / 10000 → cm로 변환
   delay(10);
   return distance;
 
@@ -46,6 +49,13 @@ float getDistance(){
     delay(10);  // 너무 빠른 반복 방지
   }
   return total / count;*/
+}
+float getDistance(){
+  measureDistance(trigPin, echoPin);
+}
+
+float getBackDistance(){
+  measureDistance(backTrigPin, backEchoPin);
 }
 // put function declarations here:
 void moveForward(){
@@ -97,6 +107,8 @@ void setup() {
 
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
+  pinMode(backTrigPin, OUTPUT);
+  pinMode(backEchoPin, INPUT);
   pinMode(in1, OUTPUT);
   pinMode(in2, OUTPUT);
   pinMode(in3, OUTPUT);
@@ -119,12 +131,12 @@ void loop() {
     stop();
 
     myservo.write(0); // 초음파센서 좌측으로 회전
-    delay(1000);
+    delay(2000);
     float leftDistance = getDistance(); //leftDistance에 값 저장
     Serial.println(leftDistance);
 
     myservo.write(180); // 초음파센서 우측으로 회전
-    delay(1000);
+    delay(2000);
     float rightDistance = getDistance(); //rightDistance에 값 저장
     Serial.println(rightDistance);
 
@@ -140,7 +152,10 @@ void loop() {
     }
     else{
       moveBackward();
-      delay(1000);
+      backdistance = getBackDistance();
+      if(backdistance < 15){
+        stop();
+      }
     }
     
   }
