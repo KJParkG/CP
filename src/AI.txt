@@ -1,0 +1,260 @@
+#include <Arduino.h>
+#include "ESP32Servo.h" // ESP32용 서보 라이브러리
+
+// --- 상수 정의 ---
+// 핀 정의 (사용자 코드 기반)
+#define SERVO_PIN 17
+#define TRIG_PIN_FRONT 15
+#define ECHO_PIN_FRONT 16
+#define TRIG_PIN_BACK 6
+#define ECHO_PIN_BACK 7
+
+// 모터 제어 핀 (L298N 또는 유사 드라이버 기준)
+#define MOTOR_ENA_PIN 3  // 왼쪽 모터 속도 제어 (PWM 또는 HIGH/LOW)
+#define MOTOR_IN1_PIN 4  // 왼쪽 모터 방향1
+#define MOTOR_IN2_PIN 5  // 왼쪽 모터 방향2
+#define MOTOR_IN3_PIN 12 // 오른쪽 모터 방향1
+#define MOTOR_IN4_PIN 13 // 오른쪽 모터 방향2
+#define MOTOR_ENB_PIN 18 // 오른쪽 모터 속도 제어 (PWM 또는 HIGH/LOW)
+
+// 거리 임계값 (cm)
+const float FRONT_OBSTACLE_THRESHOLD = 20.0; // 전방 장애물 인식 거리
+const float SIDE_CLEARANCE_THRESHOLD = 25.0; // 회전을 위해 필요한 최소 측면 공간
+const float BACK_OBSTACLE_THRESHOLD  = 15.0; // 후방 장애물 인식 거리
+
+// 서보 각도
+const int SERVO_ANGLE_LEFT  = 0;
+const int SERVO_ANGLE_FRONT = 90;
+const int SERVO_ANGLE_RIGHT = 180;
+
+// 동작 시간 (ms) - 로봇의 특성에 맞게 조절 필요
+const int TURN_DURATION_MS      = 700;  // 약 90도 회전 시간
+const int SERVO_STABILIZE_DELAY_MS = 500;  // 서보 이동 후 안정화 시간
+const int SHORT_BACKWARD_DURATION_MS = 700;  // 짧게 후진하는 시간
+const int ESCAPE_TURN_DURATION_MS = TURN_DURATION_MS * 1.5; // 탈출 시 회전 시간 (더 많이 회전)
+const int MAIN_LOOP_DELAY_MS    = 100;  // 메인 루프 지연 시간
+
+// 탈출 시도 관련
+const int MAX_ESCAPE_ATTEMPTS = 3; // 최대 탈출 시도 횟수
+
+// --- 전역 변수 ---
+Servo myservo;
+int escape_attempts_count = 0; // 현재 탈출 시도 횟수
+bool robot_is_stuck = false;     // 로봇이 완전히 갇혔는지 여부
+
+// --- 함수 프로토타입 ---
+void setup_pins();
+float measure_distance(int trig_pin, int echo_pin);
+float get_front_distance();
+float get_back_distance();
+void scan_sides(float& left_distance, float& right_distance);
+
+void move_forward();
+void move_backward(int duration_ms);
+void turn_left(int duration_ms);
+void turn_right(int duration_ms);
+void stop_motors();
+
+bool attempt_escape_maneuver();
+void handle_stuck_condition();
+void reset_escape_state();
+
+// --- setup() 함수 ---
+void setup() {
+  Serial.begin(115200);
+
+  setup_pins();
+
+  myservo.attach(SERVO_PIN);
+  myservo.write(SERVO_ANGLE_FRONT); // 서보 정면으로 초기화
+  delay(SERVO_STABILIZE_DELAY_MS);
+
+  Serial.println("Robot Setup Complete. Ready to roll!");
+}
+
+// --- loop() 함수 ---
+void loop() {
+  if (robot_is_stuck) {
+    handle_stuck_condition(); // 이미 갇힌 상태면 계속 해당 처리
+    return; // 더 이상 진행 안 함
+  }
+
+  float front_dist = get_front_distance();
+  Serial.print("Front: "); Serial.print(front_dist); Serial.println("cm");
+
+  if (front_dist > FRONT_OBSTACLE_THRESHOLD) {
+    // 전방에 공간 충분
+    Serial.println("Path clear. Moving forward.");
+    move_forward();
+    reset_escape_state(); // 성공적 이동 시 탈출 상태 리셋
+  } else {
+    // 전방 장애물 감지
+    Serial.println("Obstacle ahead!");
+    stop_motors(); // 일단 정지
+
+    float left_dist, right_dist;
+    scan_sides(left_dist, right_dist); // 좌우 탐색
+
+    // 경로 결정
+    if (left_dist > SIDE_CLEARANCE_THRESHOLD && left_dist >= right_dist) {
+      Serial.println("Turning left.");
+      turn_left(TURN_DURATION_MS);
+      reset_escape_state();
+    } else if (right_dist > SIDE_CLEARANCE_THRESHOLD && right_dist > left_dist) {
+      Serial.println("Turning right.");
+      turn_right(TURN_DURATION_MS);
+      reset_escape_state();
+    } else {
+      // 좌우도 마땅치 않음, 후방 확인
+      Serial.println("Sides also blocked. Checking back.");
+      float back_dist = get_back_distance();
+      Serial.print("Back: "); Serial.print(back_dist); Serial.println("cm");
+
+      if (back_dist > BACK_OBSTACLE_THRESHOLD) {
+        Serial.println("Space behind. Moving backward slightly.");
+        move_backward(SHORT_BACKWARD_DURATION_MS);
+        // 후진은 임시방편, 탈출 상태는 유지될 수 있음 (상황에 따라 reset_escape_state() 호출 결정)
+      } else {
+        // 앞뒤좌우 모두 막힘 -> 탈출 시도
+        Serial.println("Completely blocked! Attempting escape maneuver.");
+        if (!attempt_escape_maneuver()) { // 탈출 시도 실패 (최대 횟수 도달)
+          robot_is_stuck = true; // 로봇 갇힘 상태로 설정
+          handle_stuck_condition();
+        }
+        // attempt_escape_maneuver()가 true를 반환하면 (탈출 시도 중)
+        // 다음 루프에서 바뀐 방향으로 다시 시작
+      }
+    }
+  }
+  delay(MAIN_LOOP_DELAY_MS);
+}
+
+// --- 함수 구현 ---
+
+void setup_pins() {
+  pinMode(TRIG_PIN_FRONT, OUTPUT);
+  pinMode(ECHO_PIN_FRONT, INPUT);
+  pinMode(TRIG_PIN_BACK, OUTPUT);
+  pinMode(ECHO_PIN_BACK, INPUT);
+
+  pinMode(MOTOR_IN1_PIN, OUTPUT);
+  pinMode(MOTOR_IN2_PIN, OUTPUT);
+  pinMode(MOTOR_IN3_PIN, OUTPUT);
+  pinMode(MOTOR_IN4_PIN, OUTPUT);
+  pinMode(MOTOR_ENA_PIN, OUTPUT);
+  pinMode(MOTOR_ENB_PIN, OUTPUT);
+
+  // 모터 드라이버 Enable 핀 활성화 (항상 최대 속도로 가정)
+  digitalWrite(MOTOR_ENA_PIN, HIGH);
+  digitalWrite(MOTOR_ENB_PIN, HIGH);
+
+  stop_motors(); // 초기 모터 정지
+}
+
+float measure_distance(int trig_pin, int echo_pin) {
+  digitalWrite(trig_pin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trig_pin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trig_pin, LOW);
+
+  long duration_us = pulseIn(echo_pin, HIGH, 30000); // 타임아웃 30ms (약 5m)
+  if (duration_us > 0) {
+    return (float)(duration_us * 0.0343) / 2.0; // cm 단위
+  }
+  return 999.0; // 측정 실패 또는 타임아웃 시 매우 큰 값 반환
+}
+
+float get_front_distance() {
+  return measure_distance(TRIG_PIN_FRONT, ECHO_PIN_FRONT);
+}
+
+float get_back_distance() {
+  return measure_distance(TRIG_PIN_BACK, ECHO_PIN_BACK);
+}
+
+void scan_sides(float& left_distance, float& right_distance) {
+  Serial.println("Scanning left...");
+  myservo.write(SERVO_ANGLE_LEFT);
+  delay(SERVO_STABILIZE_DELAY_MS);
+  left_distance = get_front_distance(); // 서보가 왼쪽을 보므로 전방 센서로 왼쪽 측정
+  Serial.print("Left Distance: "); Serial.print(left_distance); Serial.println("cm");
+
+  Serial.println("Scanning right...");
+  myservo.write(SERVO_ANGLE_RIGHT);
+  delay(SERVO_STABILIZE_DELAY_MS);
+  right_distance = get_front_distance(); // 서보가 오른쪽을 보므로 전방 센서로 오른쪽 측정
+  Serial.print("Right Distance: "); Serial.print(right_distance); Serial.println("cm");
+
+  myservo.write(SERVO_ANGLE_FRONT); // 서보 정면으로 복귀
+  delay(SERVO_STABILIZE_DELAY_MS / 2);
+}
+
+void move_forward() {
+  Serial.println("Go Forward");
+  digitalWrite(MOTOR_IN1_PIN, HIGH);
+  digitalWrite(MOTOR_IN2_PIN, LOW);
+  digitalWrite(MOTOR_IN3_PIN, HIGH);
+  digitalWrite(MOTOR_IN4_PIN, LOW);
+}
+
+void move_backward(int duration_ms) {
+  Serial.println("Go Backward");
+  digitalWrite(MOTOR_IN1_PIN, LOW);
+  digitalWrite(MOTOR_IN2_PIN, HIGH);
+  digitalWrite(MOTOR_IN3_PIN, LOW);
+  digitalWrite(MOTOR_IN4_PIN, HIGH);
+  delay(duration_ms); // 지정된 시간만큼 후진
+  stop_motors();      // 후진 후 정지
+}
+
+void turn_left(int duration_ms) {
+  Serial.println("Turning Left");
+  digitalWrite(MOTOR_IN1_PIN, LOW);  // 좌측 바퀴 후진 (제자리 회전 시) 또는 정지
+  digitalWrite(MOTOR_IN2_PIN, HIGH);
+  digitalWrite(MOTOR_IN3_PIN, HIGH); // 우측 바퀴 전진
+  digitalWrite(MOTOR_IN4_PIN, LOW);
+  delay(duration_ms);
+  stop_motors();
+}
+
+void turn_right(int duration_ms) {
+  Serial.println("Turning Right");
+  digitalWrite(MOTOR_IN1_PIN, HIGH); // 좌측 바퀴 전진
+  digitalWrite(MOTOR_IN2_PIN, LOW);
+  digitalWrite(MOTOR_IN3_PIN, LOW);  // 우측 바퀴 후진 (제자리 회전 시) 또는 정지
+  digitalWrite(MOTOR_IN4_PIN, HIGH);
+  delay(duration_ms);
+  stop_motors();
+}
+
+void stop_motors() {
+  Serial.println("Stop");
+  digitalWrite(MOTOR_IN1_PIN, LOW);
+  digitalWrite(MOTOR_IN2_PIN, LOW);
+  digitalWrite(MOTOR_IN3_PIN, LOW);
+  digitalWrite(MOTOR_IN4_PIN, LOW);
+}
+
+bool attempt_escape_maneuver() {
+  if (escape_attempts_count < MAX_ESCAPE_ATTEMPTS) {
+    escape_attempts_count++;
+    Serial.print("Escape Attempt #"); Serial.println(escape_attempts_count);
+    // 예: 오른쪽으로 더 많이 회전
+    turn_right(ESCAPE_TURN_DURATION_MS); // 또는 turn_left, 또는 랜덤
+    return true; // 아직 탈출 시도 중
+  }
+  return false; // 최대 시도 횟수 도달, 탈출 실패
+}
+
+void handle_stuck_condition() {
+  Serial.println("ROBOT IS STUCK. Halting all operations.");
+  stop_motors();
+}
+
+void reset_escape_state() {
+  if (escape_attempts_count > 0) {
+    Serial.println("Path found or obstacle cleared. Resetting escape attempts.");
+  }
+  escape_attempts_count = 0;
+}
