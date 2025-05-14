@@ -7,7 +7,6 @@
 
 Servo myservo;
 
-float duration, distance;
 float backdistance; // 후방 거리
 
 #define trigPin 15
@@ -26,6 +25,7 @@ int in4 = 13; //IN4
 int enb = 18;
 
 float measureDistance(int trig, int echo){
+  float duration, distance;
   //초음파센서 거리 측정 함수
   digitalWrite(trig, LOW);
   delayMicroseconds(2);
@@ -61,6 +61,8 @@ float getBackDistance(){
 }
 // put function declarations here:
 void moveForward(){
+  analogWrite(ena, 255);
+  analogWrite(enb,  255);
   digitalWrite(in1, HIGH);
   digitalWrite(in2, LOW);
   digitalWrite(in3, HIGH);
@@ -69,6 +71,8 @@ void moveForward(){
 }
 
 void moveBackward(){
+  analogWrite(ena, 255);
+  analogWrite(enb,  255);
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
   digitalWrite(in3, LOW);
@@ -77,6 +81,8 @@ void moveBackward(){
 }
 
 void stop(){
+  analogWrite(ena, 0);
+  analogWrite(enb,  0);
   digitalWrite(in1, LOW);
   digitalWrite(in2, LOW);
   digitalWrite(in3, LOW);
@@ -85,6 +91,8 @@ void stop(){
 }
 
 void turnLeft(){
+  analogWrite(ena, 255);
+  analogWrite(enb,  255);
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
   digitalWrite(in3, HIGH);
@@ -94,6 +102,8 @@ void turnLeft(){
 }
 
 void turnRight(){
+  analogWrite(ena, 255);
+  analogWrite(enb,  255);
   digitalWrite(in1, HIGH);
   digitalWrite(in2, LOW);
   digitalWrite(in3, LOW);
@@ -125,23 +135,23 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   float frontDistance = getDistance();// 전방 거리 측정
-  delay(500); 
+  delay(500); // 실제 수행시 제거하고 전방거리 계속 측정되게끔
   Serial.print("Distance : ");
   Serial.println(frontDistance);
 
-  if (frontDistance > 15){
+  if (frontDistance > 15 && frontDistance == 0){
     moveForward();
   }
   else {
     stop();
     Serial.println("detected obstacle");
-    myservo.write(0); // 초음파센서 좌측으로 회전
+    myservo.write(45); // 초음파센서 좌측으로 회전
     delay(1000);
     float leftDistance = getDistance(); //leftDistance에 값 저장
     Serial.print("Left Distance : ");
     Serial.println(leftDistance);
 
-    myservo.write(180); // 초음파센서 우측으로 회전
+    myservo.write(135); // 초음파센서 우측으로 회전
     delay(1000);
     float rightDistance = getDistance(); //rightDistance에 값 저장
     Serial.print("Right Distance : ");
@@ -158,16 +168,22 @@ void loop() {
       delay(TURN_TIME); // 실제 회전시간에 맞춰 조절
     }
     else{
+      // moveBackward();
+      // backdistance = getBackDistance();
+      // Serial.print("Back Distance : ");
+      // Serial.println(backdistance);
+      // if(backdistance < 15 && backdistance > 0){
+      //   stop();
+      //   // 정지 후 다시 전진하도록 하는게 아닌 새롭게 길찾는 알고리즘을 하나 만들어야 함.
+      //   // 제자리 회전을 해서 새로 길을 찾거나 하는 코드.
+      //   // Escape code
+      // }
+      stop();
       moveBackward();
-      backdistance = getBackDistance();
-      Serial.print("Back Distance : ");
-      Serial.println(backdistance);
-      if(backdistance < 15){
-        stop();
-      }
+      delay(2000);
     }
-    
   }
   delay(100);
 
 }
+
