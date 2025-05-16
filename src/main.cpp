@@ -149,13 +149,13 @@ void loop() {
     stop();
     Serial.println("detected obstacle");
     myservo.write(15); // 초음파센서 좌측으로 회전
-    delay(800);
+    delay(800); // 대략적인 서보모터 회전 시간
     float leftDistance = getDistance(); //leftDistance에 값 저장
     Serial.print("Left Distance : ");
     Serial.println(leftDistance);
 
     myservo.write(165); // 초음파센서 우측으로 회전
-    delay(1000);
+    delay(1000); // 대략적인 서보모터 회전 시간
     float rightDistance = getDistance(); //rightDistance에 값 저장
     Serial.print("Right Distance : ");
     Serial.println(rightDistance);
