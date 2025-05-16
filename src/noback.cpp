@@ -1,5 +1,4 @@
 //초음파 센서 모터 제어 코드
-
 #include <Arduino.h>
 #include "ESP32Servo.h"
 
@@ -25,32 +24,32 @@ int in4 = 18; //IN4
 //int enb = 18;
 
 float measureDistance(int trig, int echo){
-  // float duration, distance;
-  // //초음파센서 거리 측정 함수
-  // digitalWrite(trig, LOW);
-  // delayMicroseconds(2);
-  // digitalWrite(trig, HIGH);
-  // delayMicroseconds(10);
-  // digitalWrite(trig, LOW);
-  // duration = pulseIn(echo, HIGH, 30000);
-  // distance = ((float)(340*duration) / 10000) / 2; // 거리 = (음속 340 m/s * 시간(us)) / 2 / 10000 → cm로 변환
-  // delay(10);
-  // return distance;
+  // 초음파센서 거리 측정 함수
+  float duration, distance;
+  digitalWrite(trig, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trig, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trig, LOW);
+  duration = pulseIn(echo, HIGH, 30000);
+  distance = ((float)(340*duration) / 10000) / 2; // 거리 = (음속 340 m/s * 시간(us)) / 2 / 10000 → cm로 변환
+  delay(10);
+  return distance;
 
-  //5번 실행하여 평균 구하는 함수
-  float total = 0;
-  int count = 3;
-  for (int i = 0; i < count; i++) {
-    digitalWrite(trig, LOW);
-    delayMicroseconds(2);
-    digitalWrite(trig, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(trig, LOW);
-    float duration = pulseIn(echo, HIGH, 30000);
-    total += duration * 0.0343 / 2.0;
-    delay(10);  // 너무 빠른 반복 방지
-  }
-  return total / count;
+  // // 5번 실행하여 평균 구하는 함수 // 안정성 ↑ 반응속도 ↓
+  // float total = 0;
+  // int count = 3;
+  // for (int i = 0; i < count; i++) {
+  //   digitalWrite(trig, LOW);
+  //   delayMicroseconds(2);
+  //   digitalWrite(trig, HIGH);
+  //   delayMicroseconds(10);
+  //   digitalWrite(trig, LOW);
+  //   float duration = pulseIn(echo, HIGH, 30000);
+  //   total += duration * 0.0343 / 2.0;
+  //   delay(10);  // 너무 빠른 반복 방지
+  // }
+  // return total / count;
 }
 float getDistance(){
   return measureDistance(trigPin, echoPin);
@@ -78,7 +77,7 @@ void moveBackward(){
   digitalWrite(in3, LOW);
   digitalWrite(in4, HIGH);
   Serial.println("Go Back");
-  delay(1000);
+  delay(4000);
 }
 
 void stop(){
@@ -150,7 +149,7 @@ void loop() {
     stop();
     Serial.println("detected obstacle");
     myservo.write(15); // 초음파센서 좌측으로 회전
-    delay(1000);
+    delay(800);
     float leftDistance = getDistance(); //leftDistance에 값 저장
     Serial.print("Left Distance : ");
     Serial.println(leftDistance);
@@ -184,7 +183,7 @@ void loop() {
       stop();
       moveBackward();
       turnLeft();
-      delay(TURN_TIME); // 딜레이 한번 더 해서 반바퀴 회전
+      turnLeft(); // 좌측 회전 2번을 통해 반바퀴 회전
     }
   }
   delay(100);
