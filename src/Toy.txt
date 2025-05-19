@@ -167,11 +167,11 @@ void loop() {
 
       if (leftDistance > 20 && leftDistance > rightDistance) {
         turnLeft();
-        break; // 
+        break; //
       }
       else if (rightDistance > 20 && rightDistance > leftDistance) {
         turnRight();
-        break; // 
+        break; //
       }
       else {
         stop();
@@ -179,7 +179,7 @@ void loop() {
         stop();
         // while 루프의 처음으로 돌아가 다시 스캔
       }
-    } 
+    }
   }
   delay(100); // 메인 루프 반복 딜레이
 }
