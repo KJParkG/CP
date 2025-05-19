@@ -181,7 +181,7 @@ void loop() {
       //   // Escape code
       // }
       stop();
-      moveBackward();
+      moveBackward(); // 3초간 후진
       turnLeft();
       turnLeft(); // 좌측 회전 2번을 통해 반바퀴 회전
     }

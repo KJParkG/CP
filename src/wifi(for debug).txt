@@ -222,6 +222,8 @@ void loop() {
   delay(100);
   Serial.print("Distance : ");
   Serial.println(frontDistance);
+  printLog("Distance : ");
+  printlnLog(frontDistance);
 
   if (frontDistance > 20){
     moveForward();
