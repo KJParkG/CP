@@ -1,9 +1,8 @@
-//초음파 센서 모터 제어 및 Telnet 로깅 코드
+//초음파 센서를 통한 장애물 회피 로봇 및 Telnet 로깅 코드
 #include <Arduino.h>
 #include "ESP32Servo.h"
-#include <WiFi.h> // Code 2
+#include <WiFi.h>
 
-// WiFi credentials (from Code 2)
 const char* ssid = "AtoZ_LAB";
 const char* password = "atoz9897!";
 
@@ -12,7 +11,6 @@ const uint16_t telnetPort = 23; // Telnet 기본 포트
 WiFiServer telnetServer(telnetPort);
 WiFiClient telnetClient; // 현재 연결된 클라이언트를 저장할 변수
 
-// 로그 메시지를 시리얼과 Telnet으로 동시에 보내는 함수 (from Code 2)
 void printLog(const String &message) {
   Serial.print(message);
   if (telnetClient && telnetClient.connected()) {
@@ -27,7 +25,6 @@ void printlnLog(const String &message) {
   }
 }
 
-// 숫자 등 다른 타입도 보내고 싶다면 String으로 변환해서 사용 (from Code 2)
 void printlnLog(float value) {
   printlnLog(String(value));
 }
@@ -36,27 +33,26 @@ void printlnLog(int value) {
   printlnLog(String(value));
 }
 
-// Servo and Sensor pins (from Code 1)
 #define SERVO_PIN 39
 Servo myservo;
 
-float backdistance; // 후방 거리 (from Code 1, not actively used in merged logic but kept)
+float backdistance; // 후방 거리
 
 #define trigPin 42
 #define echoPin 41
-//#define backTrigPin 6 // from Code 1
-//#define backEchoPin 7 // from Code 1
+//#define backTrigPin 6
+//#define backEchoPin 7
 
-// Motor control parameters (from Code 1)
 #define TURN_TIME 4000 // 실제 회전시간에 맞게 조절
+#define SAFE_DISTANCE 20
 
 // Motor driver pins (from Code 1)
-//int ena = 3; // 주석 처리됨 (from Code 1)
+//int ena = 3; 
 int in1 = 15;  //IN1
 int in2 = 16; //IN2
 int in3 = 17; //IN3
 int in4 = 18; //IN4
-//int enb = 18; // 주석 처리됨 (from Code 1)
+//int enb = 18;
 
 // 초음파센서 거리 측정 함수 (from Code 1 / Code 2, functionally identical)
 float measureDistance(int trig, int echo){
@@ -70,6 +66,21 @@ float measureDistance(int trig, int echo){
   distance = ((float)(340 * duration) / 10000) / 2; // 거리 = (음속 340 m/s * 시간(us)) / 2 / 10000 → cm로 변환
   delay(10); // 센서 안정화 시간
   return distance;
+
+  // 5번 실행하여 평균 구하는 함수 // 안정성 ↑ 반응속도 ↓
+  // float total = 0;
+  // int count = 3; // 실행 할 횟수
+  // for (int i = 0; i < count; i++) {
+  //   digitalWrite(trig, LOW);
+  //   delayMicroseconds(2);
+  //   digitalWrite(trig, HIGH);
+  //   delayMicroseconds(10);
+  //   digitalWrite(trig, LOW);
+  //   float duration = pulseIn(echo, HIGH, 30000);
+  //   total += duration * 0.0343 / 2.0;
+  //   delay(10);  // 너무 빠른 반복 방지
+  // }
+  // return total / count;
 }
 
 float getDistance(){
@@ -202,8 +213,9 @@ void loop() {
   delay(100);
   printLog("Distance : ");
   printlnLog(frontDistance);
+  Serial.println(WiFi.localIP().toString());
 
-  if (frontDistance > 20){
+  if (frontDistance > SAFE_DISTANCE){
     moveForward();
   }
   else {
@@ -226,11 +238,11 @@ void loop() {
       myservo.write(90);
       delay(500);
 
-      if (leftDistance > 20 && leftDistance > rightDistance) {
+      if (leftDistance > SAFE_DISTANCE && leftDistance > rightDistance) {
         turnLeft();
         break;
       }
-      else if (rightDistance > 20 && rightDistance > leftDistance) {
+      else if (rightDistance > SAFE_DISTANCE && rightDistance > leftDistance) {
         turnRight();
         break;
       }
