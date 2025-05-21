@@ -2,6 +2,7 @@
 
 // 2025 05 19 전방 다 막혔을때 로직 수정 (후진 뒤 180도 회전) -> (후진 뒤 좌우 탐색)
 // 2025 05 20 초음파센서 튀는 값 나올 시 장애물 감지로 판단 ->> 초음파센서 튀는 값 어떻게 잡을건지??
+// 2025 05 21 오차 발생시 다르게 리턴하는 로직 수정
 
 // 해야할 것 이상한 값 해결하는 로직 -> 오차 발생시
 
@@ -63,11 +64,11 @@ float measureDistance(int trig, int echo){
 }
 
 float getFilterDistance(){
-  const int count = 15;
+  const int count = 7;
   float sample[count];
   int validSampleCount = 0;
 
-  const float error = 5;
+  const float error = 5.0;
 
    for (int i=0; i<count; i++){
        float currentDistance = measureDistance(trigPin, echoPin);
@@ -77,6 +78,9 @@ float getFilterDistance(){
         if (currentDistance >= MIN_DISTANCE && currentDistance <= MAX_DISTANCE){
           if(validSampleCount == 0 || fabs(currentDistance - sample[validSampleCount-i] <= error))
             sample[validSampleCount++] = currentDistance;
+          if(validSampleCount != 0 && (currentDistance > MAX_DISTANCE || currentDistance < MIN_DISTANCE)){
+            return -1;
+          }
          }
         delay(20);
         }

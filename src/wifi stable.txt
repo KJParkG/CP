@@ -3,6 +3,8 @@
 // 2025 05 19 전방 다 막혔을때 로직 수정 (후진 뒤 180도 회전) -> (후진 뒤 좌우 탐색)
 // 2025 05 20 회전 각도 줄이고 이상한 값 나올 시 다른 차량 몸체 회전하기
 
+// 해야할 것 이상한 값 해결하는 로직
+
 #include <Arduino.h>
 #include "ESP32Servo.h"
 #include <WiFi.h>
@@ -71,9 +73,10 @@ float measureDistance(int trig, int echo){
     if (duration == 0){
         return 0;
     }
-  distance = ((float)(340 * duration) / 10000) / 2; // 거리 = (음속 340 m/s * 시간(us)) / 2 / 10000 → cm로 변환
-  return distance;
-
+    else{
+      distance = ((float)(340 * duration) / 10000) / 2; // 거리 = (음속 340 m/s * 시간(us)) / 2 / 10000 → cm로 변환
+      return distance;
+    }
   // 5번 실행하여 평균 구하는 함수 // 안정성 ↑ 반응속도 ↓
   // float total = 0;
   // int count = 3; // 실행 할 횟수
@@ -101,7 +104,7 @@ float getFilterDistance(){
         }
         delay(20);
     }
-    if (validSampleCount == 0 || validSampleCount > MAX_DISTANCE || validSampleCount  < MIN_DISTANCE){
+    if (validSampleCount > MAX_DISTANCE){
         return MAX_DISTANCE + 1;
     }
     std::sort(sample, sample + validSampleCount);
@@ -234,7 +237,7 @@ void loop() {
       telnetClient.flush();
     }
   }
-
+  
   float frontDistance = getDistance(); // 전방 거리 측정
   delay(100);
   printLog("Distance : ");
