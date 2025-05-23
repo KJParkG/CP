@@ -1,0 +1,109 @@
+#include <WiFi.h>
+#include <Arduino.h>     // WiFi 및 Telnet 사용
+
+// --- WiFi 설정 ---
+const char* ssid = "AtoZ_LAB";        // 여기에 실제 WiFi SSID를 입력하세요.
+const char* password = "atoz9897!"; // 여기에 실제 WiFi 비밀번호를 입력하세요.
+
+#define trigPin 42
+#define echoPin 41
+
+// --- Telnet 서버 설정 ---
+const uint16_t telnetPort = 23;
+WiFiServer telnetServer(telnetPort);
+WiFiClient telnetClient;
+
+// --- 로깅 함수 (Serial + Telnet) ---
+void printLog(const String &message) {
+  Serial.print(message);
+  if (telnetClient && telnetClient.connected()) {
+    telnetClient.print(message);
+  }
+}
+
+void printlnLog(const String &message) {
+  Serial.println(message);
+  if (telnetClient && telnetClient.connected()) {
+    telnetClient.println(message);
+  }
+}
+
+void printlnLog(float value) {
+  // 부동소수점 값을 문자열로 변환하여 로깅 (소수점 2자리)
+  char buffer[16]; // 충분한 크기의 버퍼
+  snprintf(buffer, sizeof(buffer), "%.2f", value);
+  printlnLog(String(buffer));
+}
+
+void printlnLog(int value) {
+  printlnLog(String(value));
+}
+
+void setup(){
+    Serial.begin(115200);
+    printlnLog(" ");
+  printLog("Robot Starting... Trying to connect to WiFi: ");
+  printlnLog(ssid);
+
+  WiFi.begin(ssid, password);
+  int wifi_retries = 0;
+  while (WiFi.status() != WL_CONNECTED && wifi_retries < 20) { // 최대 10초간 시도
+    delay(500);
+    Serial.print("."); // WiFi 연결 중에는 Telnet이 안되므로 Serial로만 출력
+    wifi_retries++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    printlnLog(""); // 연결 성공 후에는 printlnLog 사용 가능
+    printlnLog("WiFi connected.");
+    printLog("IP address: ");
+    printlnLog(WiFi.localIP().toString());
+
+    telnetServer.begin();
+    telnetServer.setNoDelay(true);
+    printLog("Telnet server started on port ");
+    printlnLog(telnetPort);
+    printlnLog("You can connect using a Telnet client.");
+  } else {
+    printlnLog("");
+    printlnLog("Failed to connect to WiFi. Running in offline mode (Serial log only).");
+  }
+    pinMode(trigPin, OUTPUT);
+    pinMode(echoPin, INPUT);
+}
+
+void loop(){
+    if (WiFi.status() == WL_CONNECTED && telnetServer.hasClient()) {
+    if (telnetClient && telnetClient.connected()) {
+      telnetClient.stop(); // WiFiClient의 stop()
+      printlnLog("Previous Telnet client disconnected.");
+    }
+    telnetClient = telnetServer.available();
+    if (telnetClient && telnetClient.connected()) {
+      printLog("New Telnet client connected: ");
+      printlnLog(telnetClient.remoteIP().toString());
+      telnetClient.println("--- Welcome to ESP32 Robot Monitor ---");
+      telnetClient.flush();
+    }
+  }
+    float duration, distance;
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+    duration = pulseIn(echoPin, HIGH, 30000);
+    if (duration == 0){
+        distance = 0;
+    }
+    else{
+        distance = duration * 0.034 / 2;
+    }
+    Serial.print("Distance : ");
+    printLog("Distance : ");
+    Serial.println(distance);
+    printlnLog(distance);
+    Serial.println(WiFi.localIP().toString());
+    
+    delay(500);
+}

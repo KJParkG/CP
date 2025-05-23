@@ -17,8 +17,8 @@ const float MIN_DISTANCE = 3.0f;   // cm 단위, 센서가 안정적으로 측�
 
 // 로봇 행동 관련 설정
 const float SAFE_DISTANCE = 20.0f; // cm 단위, 이 거리보다 가까우면 장애물로 인식
-const int TURN_TIME = 4000;         // ms 단위, 회전 시간
-const int MOVE_BACK_TIME = 1500;   // ms 단위, 후진 시간
+const int TURN_TIME = 2500;         // ms 단위, 회전 시간
+const int MOVE_BACK_TIME = 2000;   // ms 단위, 후진 시간
 const int SERVO_PIN = 39;          // 서보 모터 연결 핀
 
 int ena = 13;
@@ -26,7 +26,7 @@ int in1 = 15;  //IN1
 int in2 = 16; //IN2
 int in3 = 17; //IN3
 int in4 = 18; //IN4
-int enb = 12;
+// int enb = 12;
 
 // --- 전역 변수 ---
 Servo myservo; // 서보 객체
@@ -91,10 +91,7 @@ float getFilterDistance(SENSOR_PROFILE_ID profileId) {
                 }
             }
         }
-        delay(20); // 안정적인 측정을 위한 짧은 딜레이
-        if (validSampleCount == samplesToAttempt) {
-            break;
-        }
+        delay(20); // 안정을 위한 짧은 딜레이
     }
 
     float resultDistance;
@@ -105,13 +102,15 @@ float getFilterDistance(SENSOR_PROFILE_ID profileId) {
             sum += samples[i];
         }
         resultDistance = sum / validSampleCount;
-        lastStatefulDistances[profileId] = resultDistance;
+        lastStatefulDistances[profileId] = resultDistance; // 방향에 최근 거리 저장
     } else {
         if (readingsTaken > 0 && readingsAboveMax == readingsTaken) {
             if (lastStatefulDistances[profileId] >= MIN_DISTANCE && lastStatefulDistances[profileId] < MAX_DISTANCE) {
+              // 장애물이 감지되다가 갑자기 최대거리가 나오면 오류로 처리
                 resultDistance = -1.0f;
                 lastStatefulDistances[profileId] = -1.0f;
             } else {
+              // 계속 최대거리였다면 최대거리로 반환
                 resultDistance = MAX_DISTANCE;
                 lastStatefulDistances[profileId] = MAX_DISTANCE;
             }
@@ -126,7 +125,7 @@ float getFilterDistance(SENSOR_PROFILE_ID profileId) {
 // --- 로봇 동작 함수 (플레이스홀더) ---
 void moveForward(){
   analogWrite(ena, 250); // from Code 1
-  analogWrite(enb, 255); // from Code 1
+  //analogWrite(enb, 250); // from Code 1
   digitalWrite(in1, HIGH);
   digitalWrite(in2, LOW);
   digitalWrite(in3, HIGH);
@@ -136,7 +135,7 @@ void moveForward(){
 
 void moveBackward(int time){
   analogWrite(ena, 250); // from Code 1
-  analogWrite(enb,  255); // from Code 1
+  //analogWrite(enb,  250); // from Code 1
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
   digitalWrite(in3, LOW);
@@ -146,8 +145,8 @@ void moveBackward(int time){
 }
 
 void stop(){
-  analogWrite(ena, 0); // from Code 1
-  analogWrite(enb,  0); // from Code 1
+  //analogWrite(ena, 0); // from Code 1
+  //analogWrite(enb,  0); // from Code 1
   digitalWrite(in1, LOW);
   digitalWrite(in2, LOW);
   digitalWrite(in3, LOW);
@@ -158,7 +157,7 @@ void stop(){
 
 void turnLeft(int time){
   analogWrite(ena, 250); // from Code 1
-  analogWrite(enb,  255); // from Code 1
+  //analogWrite(enb,  250); // from Code 1
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
   digitalWrite(in3, HIGH);
@@ -169,7 +168,7 @@ void turnLeft(int time){
 
 void turnRight(int time){
   analogWrite(ena, 250); // from Code 1
-  analogWrite(enb,  255); // from Code 1
+  //analogWrite(enb,  250); // from Code 1
   digitalWrite(in1, HIGH);
   digitalWrite(in2, LOW);
   digitalWrite(in3, LOW);
@@ -189,8 +188,8 @@ void setup() {
   pinMode(in2, OUTPUT);
   pinMode(in3, OUTPUT);
   pinMode(in4, OUTPUT);
-  pinMode(ena, OUTPUT);
-  pinMode(enb, OUTPUT);
+  // pinMode(ena, OUTPUT);
+  // pinMode(enb, OUTPUT);
   myservo.attach(SERVO_PIN); // 서보 모터 핀 연결
   myservo.write(90);         // 서보 모터 초기 위치 (정면)
   delay(500);

@@ -38,8 +38,6 @@ void printlnLog(int value) {
 }
 
 
-// --- 전역 상수 및 설정 ---
-// 초음파 센서 핀 (HC-SR04 기준)
 const int TRIG_PIN = 42;
 const int ECHO_PIN = 41;
 
@@ -49,17 +47,16 @@ const float MIN_DISTANCE = 3.0f;   // cm 단위, 센서가 안정적으로 측�
 
 // 로봇 행동 관련 설정
 const float SAFE_DISTANCE = 20.0f; // cm 단위, 이 거리보다 가까우면 장애물로 인식
-const int TURN_TIME = 4000;        // ms 단위, 회전 시간 (사용자 환경에 맞게 조절 필요, 기존 4000에서 줄여봄)
+const int TURN_TIME = 2500;         // ms 단위, 회전 시간
 const int MOVE_BACK_TIME = 2000;   // ms 단위, 후진 시간
 const int SERVO_PIN = 39;          // 서보 모터 연결 핀
 
-// 모터 드라이버 핀 (L298N 기준)
-int ena = 13; // 왼쪽 모터 속도 제어 (PWM)
-int in1 = 15; // 왼쪽 모터 방향 제어 1
-int in2 = 16; // 왼쪽 모터 방향 제어 2
-int in3 = 17; // 오른쪽 모터 방향 제어 1
-int in4 = 18; // 오른쪽 모터 방향 제어 2
-int enb = 12; // 오른쪽 모터 속도 제어 (PWM)
+int ena = 13;
+int in1 = 15;  //IN1
+int in2 = 16; //IN2
+int in3 = 17; //IN3
+int in4 = 18; //IN4
+// int enb = 12;
 
 // --- 전역 변수 ---
 Servo myservo; // 서보 객체
@@ -72,28 +69,28 @@ enum SENSOR_PROFILE_ID {
   PROFILE_COUNT // 프로필 개수 (배열 크기 지정용)
 };
 
-// --- 실제 거리 측정 함수 (기본) ---
-float measureDistanceBasic(int trigPin, int echoPin) {
+// --- 실제 거리 측정 함수 (플레이스홀더) ---
+// 사용하시는 초음파 센서 라이브러리나 직접 구현한 코드로 대체해야 합니다.
+float measureDistance(int trigPin, int echoPin) {
+  // HC-SR04 예시 로직 (실제 값으로 보정 필요)
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
-  // pulseIn의 타임아웃은 왕복 시간을 고려해야 하므로, MAX_DISTANCE에 도달하는 시간의 두 배 이상으로 설정
-  // 예: 400cm -> 4m. 음속 343m/s. 4m / 343m/s * 2 (왕복) * 1,000,000 us/s = 23323 us
-  long duration = pulseIn(echoPin, HIGH, (long)(MAX_DISTANCE / 34.3 * 2.0 * 1000.0) + 10000); // 여유 타임아웃
-  float distance = duration * 0.0343 / 2.0;
+  long duration = pulseIn(echoPin, HIGH);
+  float distance = duration * 0.034 / 2; // Speed of sound wave divided by 2 (go and back)
 
-  if (distance == 0 || distance > MAX_DISTANCE * 1.5) {
-    return MAX_DISTANCE + 10.0f;
+  if (distance == 0 || distance > MAX_DISTANCE * 1.5) { // 측정 실패 또는 너무 먼 값은 MAX_DISTANCE + 약간의 여유로 처리
+    return MAX_DISTANCE + 10.0f; // MAX_DISTANCE보다 큰 값으로 반환하여 필터링 로직에서 처리되도록 함
   }
   return distance;
 }
 
-// --- 필터링된 거리 측정 함수 (첫 번째 코드에서 가져옴) ---
+// --- 필터링된 거리 측정 함수 ---
 float getFilterDistance(SENSOR_PROFILE_ID profileId) {
-    static float lastStatefulDistances[PROFILE_COUNT];
-    static bool isInitialized = false;
+    static float lastStatefulDistances[PROFILE_COUNT]; // 각 방향 별 마지막 거리 상태 저장
+    static bool isInitialized = false; 
 
     if (!isInitialized) {
         for (int i = 0; i < PROFILE_COUNT; ++i) {
@@ -110,7 +107,7 @@ float getFilterDistance(SENSOR_PROFILE_ID profileId) {
     int readingsAboveMax = 0;
 
     for (int i = 0; i < samplesToAttempt; i++) {
-        float currentDistance = measureDistanceBasic(TRIG_PIN, ECHO_PIN); // 전역 핀 사용
+        float currentDistance = measureDistance(TRIG_PIN, ECHO_PIN); // 전역 핀 사용
         readingsTaken++;
 
         if (currentDistance > MAX_DISTANCE) { // 최댓값이 측정된 횟수 구하기
@@ -119,43 +116,37 @@ float getFilterDistance(SENSOR_PROFILE_ID profileId) {
             if (validSampleCount == 0) { // 샘플이 없을 시 첫 배열에 샘플 넣음
                 samples[validSampleCount++] = currentDistance;
             } else {
-                // 이전 유효 샘플과 비교해서 오차가 작다면 넣음
-                if (std::fabs(currentDistance - samples[validSampleCount - 1]) <= errorThreshold) {
+                if (std::fabs(currentDistance - samples[validSampleCount - 1]) <= errorThreshold) { // 이전 값과 비교해서 오차가 작다면 넣음
                     samples[validSampleCount++] = currentDistance;
                 }
-                // 오차가 크면 해당 샘플은 버림 (필터링 강화)
             }
         }
-        delay(25); // 안정적인 측정을 위한 짧은 딜레이 (기존 20ms)
-        // 유효 샘플이 3개 이상 모이면 더 이상 측정하지 않고 평균 계산 (반응 속도 개선 목적)
-        if (validSampleCount >= 3 && i >=2) { // 최소 3번은 측정 시도 후, 유효 샘플 3개 이상이면 break
-             break;
-        }
+        delay(20); // 안정을 위한 짧은 딜레이
     }
 
     float resultDistance;
 
-    if (validSampleCount > 0) { // 유효한 샘플이 하나라도 있다면
+    if (validSampleCount > 0) {
         float sum = 0;
         for (int i = 0; i < validSampleCount; i++) {
             sum += samples[i];
         }
         resultDistance = sum / validSampleCount;
-        lastStatefulDistances[profileId] = resultDistance; // 마지막 유효 상태 업데이트
-    } else { // 유효한 샘플이 하나도 없는 경우
-        // 모든 시도가 MAX_DISTANCE를 초과했는지, 아니면 다른 이유로 유효 샘플이 없는지 확인
+        lastStatefulDistances[profileId] = resultDistance; // 방향에 최근 거리 저장
+    } else {
         if (readingsTaken > 0 && readingsAboveMax == readingsTaken) {
             if (lastStatefulDistances[profileId] >= MIN_DISTANCE && lastStatefulDistances[profileId] < MAX_DISTANCE) {
-                 resultDistance = -1.0f; // 이전엔 괜찮았는데 지금 다 MAX면 오류로 보자
-                 lastStatefulDistances[profileId] = -1.0f; // 상태도 오류로 업데이트
+              // 장애물이 감지되다가 갑자기 최대거리가 나오면 오류로 처리
+                resultDistance = -1.0f;
+                lastStatefulDistances[profileId] = -1.0f;
             } else {
-                 resultDistance = MAX_DISTANCE; // 원래 MAX였거나 초기상태면 MAX로
-                 lastStatefulDistances[profileId] = MAX_DISTANCE;
+              // 계속 최대거리였다면 최대거리로 반환
+                resultDistance = MAX_DISTANCE;
+                lastStatefulDistances[profileId] = MAX_DISTANCE;
             }
         } else {
-            // 그 외의 경우 (MIN_DISTANCE 미만 값, 간헐적 오류 등)는 측정 실패(-1.0f)로 처리
             resultDistance = -1.0f;
-            lastStatefulDistances[profileId] = -1.0f; // 상태도 오류로 업데이트
+            lastStatefulDistances[profileId] = -1.0f;
         }
     }
     return resultDistance;
@@ -164,8 +155,8 @@ float getFilterDistance(SENSOR_PROFILE_ID profileId) {
 
 // --- 로봇 동작 함수 (첫 번째 코드 기반, 로깅 추가) ---
 void moveForward() {
-  analogWrite(ena, 200); // 속도 (0-255)
-  analogWrite(enb, 200);
+  analogWrite(ena, 250); // 속도 (0-255)
+  //analogWrite(enb, 250);
   digitalWrite(in1, HIGH);
   digitalWrite(in2, LOW);
   digitalWrite(in3, HIGH);
@@ -174,8 +165,8 @@ void moveForward() {
 }
 
 void moveBackward(int time) {
-  analogWrite(ena, 180); // 후진 속도
-  analogWrite(enb, 180);
+  analogWrite(ena, 250); // 후진 속도
+  //analogWrite(enb, 250);
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
   digitalWrite(in3, LOW);
@@ -186,8 +177,8 @@ void moveBackward(int time) {
 
 // 함수 이름을 stopMotors로 변경 (WiFiClient의 stop 메소드와 충돌 방지)
 void stopMotors() {
-  analogWrite(ena, 0);
-  analogWrite(enb, 0);
+  //analogWrite(ena, 0);
+  //analogWrite(enb, 0);
   digitalWrite(in1, LOW);
   digitalWrite(in2, LOW);
   digitalWrite(in3, LOW);
@@ -198,8 +189,8 @@ void stopMotors() {
 }
 
 void turnLeft(int time) {
-  analogWrite(ena, 200); // 회전 속도
-  analogWrite(enb, 200);
+  analogWrite(ena, 250); // 회전 속도
+  //analogWrite(enb, 250);
   digitalWrite(in1, LOW);  // 왼쪽 바퀴 후진
   digitalWrite(in2, HIGH);
   digitalWrite(in3, HIGH); // 오른쪽 바퀴 전진
@@ -209,8 +200,8 @@ void turnLeft(int time) {
 }
 
 void turnRight(int time) {
-  analogWrite(ena, 200); // 회전 속도
-  analogWrite(enb, 200);
+  analogWrite(ena, 250); // 회전 속도
+  //analogWrite(enb, 250);
   digitalWrite(in1, HIGH); // 왼쪽 바퀴 전진
   digitalWrite(in2, LOW);
   digitalWrite(in3, LOW);  // 오른쪽 바퀴 후진
@@ -260,7 +251,7 @@ void setup() {
   pinMode(in3, OUTPUT);
   pinMode(in4, OUTPUT);
   pinMode(ena, OUTPUT);
-  pinMode(enb, OUTPUT);
+  //pinMode(enb, OUTPUT);
 
   myservo.attach(SERVO_PIN);
   myservo.write(90); // 서보 모터 초기 위치 (정면)

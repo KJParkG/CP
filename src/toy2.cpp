@@ -1,24 +1,12 @@
 
 #include "ESP32Servo.h" // 서보 모터 사용
 #include <Arduino.h>
-#include <WiFi.h> 
-
-const char* ssid = "AtoZ_LAB";        // 여기에 실제 WiFi SSID를 입력하세요.
-const char* password = "atoz9897!"; // 여기에 실제 WiFi 비밀번호를 입력하세요.
-WiFiServer telnetServer(23);
-WiFiClient telnetClient;
-
-void log(const String& msg) {
-  Serial.println(msg);
-  if (telnetClient && telnetClient.connected()) {
-    telnetClient.println(msg);
-  }
-}
 // 2025 05 19 전방 다 막혔을때 로직 수정 (후진 뒤 180도 회전) -> (후진 뒤 좌우 탐색)
 // 2025 05 20 초음파센서 튀는 값 나올 시 장애물 감지로 판단 ->> 초음파센서 튀는 값 어떻게 잡을건지??
 // 2025 05 21 오차 발생시 다르게 리턴하는 로직 수정
 // 2025 05 23 최소거리에서 안전거리 사이 일때만 리턴 나머지는 그냥 최대값 반환
 
+// 반사가 안되는 것과, 전방이 비어있는 것 어떻게 구분을 할까???
 // --- 전역 상수 및 설정 ---
 // 초음파 센서 핀 (HC-SR04 기준)
 const int TRIG_PIN = 42;
@@ -68,7 +56,7 @@ float getFilteredDistance() {
     }
     delay(30);
   }
-  return (count > 0) ? 0 : MAX_DISTANCE;
+  return (count > 0) ? 0 : measureDistance();
 }
 
 // --- 로봇 동작 함수 (플레이스홀더) ---
@@ -105,7 +93,7 @@ void stop(){
 }
 
 void turnLeft(int time){
-  analogWrite(ena, 230); // from Code 1
+  analogWrite(ena, 255); // from Code 1
   //analogWrite(enb,  250); // from Code 1
   digitalWrite(in1, LOW);
   digitalWrite(in2, HIGH);
@@ -116,7 +104,7 @@ void turnLeft(int time){
 }
 
 void turnRight(int time){
-  analogWrite(ena, 230); // from Code 1
+  analogWrite(ena, 255); // from Code 1
   //analogWrite(enb,  250); // from Code 1
   digitalWrite(in1, HIGH);
   digitalWrite(in2, LOW);
@@ -129,15 +117,7 @@ void turnRight(int time){
 // --- 아두이노 표준 함수 ---
 void setup() {
   Serial.begin(9600); // 시리얼 통신 시작
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi connected");
-  telnetServer.begin();
-  telnetServer.setNoDelay(true);
-  log("Telnet server started");
+  Serial.println("Robot Setup Complete. Starting loop...");
 
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
@@ -156,20 +136,13 @@ void setup() {
 }
 
 void loop() {
-    // 새로운 Telnet 클라이언트 연결 처리
-  if (telnetServer.hasClient()) {
-    if (telnetClient && telnetClient.connected()) {
-      telnetClient.stop(); // 기존 연결 끊기
-    }
-    telnetClient = telnetServer.available();
-    log("Telnet client connected");
-  }
-
   float frontDistance = getFilteredDistance();
   //Serial.print("Front Distance: ");
   //Serial.println(measureDistance(TRIG_PIN, ECHO_PIN));
   if (frontDistance != 0) {
     moveForward();
+    Serial.print("Front Distance: ");
+    Serial.println(frontDistance);
   } else {
     stop();
       Serial.print("Obstacle detected");
