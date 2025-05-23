@@ -63,41 +63,70 @@ float measureDistance(int trig, int echo){
   // return total / count;
 }
 
-float getFilterDistance(){
-  const int count = 7;
-  float sample[count];
-  int validSampleCount = 0;
+float getFilterDistance() {
+    static float lastDistance = -1.0f;
 
-  const float error = 5.0;
+    const int samplesToAttempt = 7;     // 총 시도할 샘플 수
+    float samples[samplesToAttempt];    // 유효한 샘플을 저장할 배열
+    int validSampleCount = 0;           // 유효하게 저장된 샘플의 개수
 
-   for (int i=0; i<count; i++){
-       float currentDistance = measureDistance(trigPin, echoPin);
-      if (currentDistance > MAX_DISTANCE || currentDistance < MIN_DISTANCE){
-        return MAX_DISTANCE;
-      }
-        if (currentDistance >= MIN_DISTANCE && currentDistance <= MAX_DISTANCE){
-          if(validSampleCount == 0 || fabs(currentDistance - sample[validSampleCount-i] <= error))
-            sample[validSampleCount++] = currentDistance;
-          if(validSampleCount != 0 && (currentDistance > MAX_DISTANCE || currentDistance < MIN_DISTANCE)){
-            return -1;
-          }
-         }
-        delay(20);
+    const float errorThreshold = 5.0;   // 이전 유효 샘플과의 최대 허용 오차
+
+    int readingsTaken = 0;              // 실제 측정 시도 횟수
+    int readingsAboveMax = 0;           // MAX_DISTANCE를 초과한 측정 횟수
+
+    for (int i = 0; i < samplesToAttempt; i++) {
+        float currentDistance = measureDistance(trigPin, echoPin);
+        readingsTaken++;
+
+        if (currentDistance > MAX_DISTANCE) {
+            readingsAboveMax++;
+        } else if (currentDistance >= MIN_DISTANCE) {
+            if (validSampleCount == 0) {
+                samples[validSampleCount++] = currentDistance;
+            } else {
+                // 이전 유효 샘플과 비교하여 일관성이 있는지 확인
+                if (std::fabs(currentDistance - samples[validSampleCount - 1]) <= errorThreshold) {
+                    samples[validSampleCount++] = currentDistance;
+                }
+                // 오차 벗어나면 샘플은 버림.
+            }
         }
-
-    if (validSampleCount > 0){
-      float sum = 0;
-      for (int i=0; i<validSampleCount; i++){
-        sum += sample[i];
-      }
-      return sum / validSampleCount;
+        delay(20); // 다음 측정을 위해 잠시 대기
+        // 유효 샘플 배열이 가득 찼다면 더 이상 측정할 필요가 없습니다.
+        if (validSampleCount == samplesToAttempt) {
+            break;
+        }
     }
-    else{
-      return -1;
+    float resultDistance;
+    // 평균 계산 또는 최종 상태 결정
+    if (validSampleCount > 0) {
+        // 유효한 샘플이 하나 이상 수집된 경우, 평균을 계산하여 반환
+        float sum = 0;
+        for (int i = 0; i < validSampleCount; i++) {
+            sum += samples[i];
+        }
+        resultDistance = sum / validSampleCount;
+        lastDistance = resultDistance;
+    } else {
+        // 유효한 샘플이 하나도 수집되지 않은 경우
+        // 모든 측정이 MAX_DISTANCE를 초과했는지 확인 (앞이 비어있음)
+        if (readingsTaken > 0 && readingsAboveMax == readingsTaken) {
+          if(lastDistance >= MIN_DISTANCE && lastDistance < MAX_DISTANCE){
+            resultDistance = -1.0f;
+            lastDistance = -1.0f;
+          }else{
+            resultDistance = MAX_DISTANCE;
+            lastDistance = MAX_DISTANCE;
+          }
+        } else {
+            // 그 외의 이유로 유효 샘플이 없는 경우
+            resultDistance = -1.0f;
+            lastDistance = -1.0f;
+        }
     }
+    return resultDistance;
 }
-
-       
 
 void moveForward(){
   analogWrite(ena, 250); // from Code 1
@@ -177,7 +206,8 @@ void setup() {
 void loop() {
 
   float frontDistance = getFilterDistance();// 전방 거리 측정
-
+  Serial.print("Front Distance: ");
+  Serial.println(frontDistance);
   if (frontDistance > SAFE_DISTANCE){
     moveForward();
   }
@@ -187,13 +217,13 @@ void loop() {
     Serial.println("detected obstacle");
     while(true) { // 길을 찾을 때까지 반복
       Serial.println("finding path...");
-      myservo.write(5);
+      myservo.write(15);
       delay(800);
       float leftDistance = getFilterDistance();
       Serial.print("Left Distance: ");
       Serial.println(leftDistance);
 
-      myservo.write(175);
+      myservo.write(165);
       delay(1000);
       float rightDistance = getFilterDistance();
       Serial.print("Right Distance: ");
